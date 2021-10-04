@@ -576,3 +576,22 @@ endif( ${BUILD_TESTS} )
 
 # Create source group for headers
 source_group( "Header Files" FILES ${HEADERS} )
+
+
+option( BUILD_CAMERA_TEST "BUILD_CAMERA_TEST" ON)
+set( CAMERA_TEST_NAME "OpenARK_camera_test")
+if( ${BUILD_CAMERA_TEST} AND realsense2_FOUND )
+    add_executable( ${CAMERA_TEST_NAME} OpenARKCameraTest.cpp )
+    target_include_directories( ${CAMERA_TEST_NAME} PRIVATE ${INCLUDE_DIR} )
+    set_target_properties( ${CAMERA_TEST_NAME} PROPERTIES OUTPUT_NAME ${CAMERA_TEST_NAME} )
+    set_target_properties( ${CAMERA_TEST_NAME} PROPERTIES COMPILE_FLAGS ${TARGET_COMPILE_FLAGS} )
+    if ( MSVC )
+        target_link_libraries( ${CAMERA_TEST_NAME} ${DEPENDENCIES} ${LIB_NAME} )
+    else()
+        target_link_libraries( ${CAMERA_TEST_NAME} ${DEPENDENCIES} ${LIB_NAME} GLU GL glut )
+    endif ( MSVC )
+    add_executable( camera_test_writer D435iCalibWriter.cpp )
+    target_include_directories( camera_test_writer PRIVATE ${INCLUDE_DIR} )
+    target_link_libraries( camera_test_writer ${DEPENDENCIES} ${LIB_NAME} )
+    set_target_properties( camera_test_writer PROPERTIES COMPILE_FLAGS ${TARGET_COMPILE_FLAGS} )
+endif( ${BUILD_CAMERA_TEST} AND realsense2_FOUND )
