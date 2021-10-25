@@ -22,7 +22,9 @@ namespace ark {
     typedef std::unordered_map<std::string, LoopClosureDetectedHandler> MapLoopClosureDetectedHandler;
     typedef std::unordered_map<std::string, SparseMapCreationHandler> MapSparseMapCreationHandler;
     typedef std::unordered_map<std::string, SparseMapMergeHandler> MapSparseMapMergeHandler;
-
+    
+    // SLAMSystem is an Abstract Base Class, currently (2021-10-17) the only inherent class is the OkvisSlamSystem. 
+    // One can considered remove this class when adopting to a new SLAM system.
     class SLAMSystem {
     public:
 
