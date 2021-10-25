@@ -39,7 +39,7 @@ namespace ark
         camera_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
         // currently only fixed frame rate is supported
         camera_config.camera_fps       = K4A_FRAMES_PER_SECOND_30;
-        // RGBA fp32
+        // RGBA 4 uint8
         // The Azure Kinect device does not natively capture in this format. 
         // Requesting images of this format requires additional computation in the API.
         camera_config.color_format     = K4A_IMAGE_FORMAT_COLOR_BGRA32;
@@ -151,6 +151,7 @@ namespace ark
 
     void AzureKinectCamera::getCurrData( cv::Mat& rgb_output, \
                                          cv::Mat& xyz_output, \
+                                         cv::Mat& ir_output, \
                                          uint16_t& timestamp,\
                                          std::vector<AzureKinectCamera::imu_data>& imu_outputs )
     {
@@ -172,6 +173,7 @@ namespace ark
 
         k4a_image_t image_sample = NULL;
         k4a_image_t depth_sample = NULL;
+        k4a_image_t ir_sample = NULL;
         k4a_imu_sample_t imu_sample = NULL;
 
         // Capture depth & image data
@@ -206,6 +208,14 @@ namespace ark
         // Extract depth from capture
         depth_sample = k4a_capture_get_depth_image(capture);
         if ( !depth_sample )
+        {
+            printf("Failed to read depth from capture\n");
+            goto ReleaseRunTimeResource;
+        }
+
+        // Extract infra-red from capture
+        ir_sample = k4a_capture_get_ir_image( capture );
+        if ( !ir_sample )
         {
             printf("Failed to read depth from capture\n");
             goto ReleaseRunTimeResource;
@@ -266,7 +276,7 @@ namespace ark
         {
             printf("Failed to create transformed depth image\n");
             goto ReleaseRunTimeResource;
-        }        
+        }
 
         // Transform depth
         if (K4A_RESULT_SUCCEEDED != \
@@ -345,10 +355,18 @@ namespace ark
         // User may reuse the rgb_output variable to avoid allocate new memory every time
         cv::cvtColor(rgba_output, rgb_output, cv::COLOR_RGBA2RGB);
 
+        // Copy IR to output
+        //
+        // Reference: Azure-Kinect-Samples/pipe-to-python-samples/main.cpp
+        std::memcpy( reinterpret_cast<uint8_t*> xyz_output.data,
+                     reinterpret_cast<uint8_t*> k4a_image_get_buffer( ir_sample ), 
+                     k4a_image_get_size( ir_sample ) );
+
         // Free resources
     ReleaseRunTimeResource:
-        if ( image_sample ) k4a_image_release(image_sample);
-        if ( depth_sample ) k4a_image_release(depth_sample);
+        if ( image_sample ) k4a_image_release( image_sample );
+        if ( depth_sample ) k4a_image_release( depth_sample );
+        if ( ir_sample ) k4a_image_release( ir_sample );
         if ( depth_transformed_image_coordinate ) k4a_image_release(depth_transformed_image_coordinate);
         // Now we're using cv::Mat buffer for k4a_image_t. This memory should be free by caller
         // k4a_image_release(point_cloud_transformed_image_coordinate);

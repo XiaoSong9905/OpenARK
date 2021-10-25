@@ -39,7 +39,7 @@ namespace ark
 
             uint64_t timestamp_usec; /**< Timestamp of the accelerometer in microseconds. */
             float3_t gyro_sample; /**< Gyro sample in radians per second. */
-            float3_t acc_sample; /**< Accelerometer sample in meters per second squared. */
+            float3_t acc_sample;  /**< Accelerometer sample in meters per second squared. */
         };
     
     public:
@@ -53,9 +53,10 @@ namespace ark
         // This function should be call around 30 fps to get all data
         void getCurrData( cv::Mat& rgb_output, \
                           cv::Mat& xyz_output, \
+                          cv::Mat& ir_output, \
                           uint16_t& timestamp,\
                           std::vector<AzureKinectCamera::imu_data>& imu_outputs )
-                                        
+                    
         std::string getModelName() const;
 
         // Get RGB image intrinsic matrix
