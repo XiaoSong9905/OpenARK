@@ -1,78 +1,92 @@
-/*
- * Azure Kinect Camera Class Header File
- *
- * Xiao Song ( xiaosx@berkeley.edu )
+/* 
+ * Azure Kinect Camera Class api for Hand & Avatr
  * 
+ * Alex Yu ( alexyu99126@gmail.com ) 2019
+ * Xiao Song ( xiaosx@berkeley.edu ) 2021
+ * 
+ * Change Log
+ * 2021-10-25: optimize the implementation.
  */
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <opencv2/core.hpp> // cv::Size, cv::Vec4d
-#include <k4a/k4a.h> // k4a_device_t
+#include <opencv2/core.hpp>
+#include "openark/Version.h"
+#include "openark/camera/DepthCamera.h"
 
-namespace ark
-{
-
-    // Design: currently we only support AzureKinect camera. 
-    // Thus there's no need to derive from base class.
-    class AzureKinectCamera
+namespace ark {
+    /**
+    * Class defining the behavior of an Azure Kinect (K4A) Camera.
+    * Example on how to read from sensor and visualize its output
+    * @include SensorIO.cpp
+    */
+    class AzureKinectCamera : public DepthCamera
     {
     public:
-        typedef union
-        {
-            /** XYZ or array representation of vector. */
-            struct _xyz
-            {
-                float x; /**< X component of a vector. */
-                float y; /**< Y component of a vector. */
-                float z; /**< Z component of a vector. */
-            } xyz;       /**< X, Y, Z representation of a vector. */
-            float v[3];  /**< Array representation of a vector. */
-        } float3_t;
 
-        struct imu_data
-        {
-            // acc timestamp and gyro timestamp is nearly the same
-            //      thus we use acc timestamp.
+        /**
+        * Public constructor initializing the Azure Kinect Camera.
+        * @param device_id camera device id. 0 is default.
+        * @param wide_fov_mode if true, starts Azure Kinect in wide FOV depth mode
+        * @param use_1080p if true, records in 1080p rather than 720p
+        * @param scale amount to scale down final image by
+        */
+        explicit AzureKinectCamera() noexcept;
 
-            uint64_t timestamp_usec; /**< Timestamp of the accelerometer in microseconds. */
-            float3_t gyro_sample; /**< Gyro sample in radians per second. */
-            float3_t acc_sample;  /**< Accelerometer sample in meters per second squared. */
-        };
-    
-    public:
-        AzureKinectCamera() noexcept;
+        /**
+        * Destructor for the Azure Kinect Camera.
+        */
+        ~AzureKinectCamera() override;
 
-        ~AzureKinectCamera() noexcept;
+        /**
+         * Get the camera's model name.
+         */
+        const std::string getModelName() const override;
 
-        void startCamera();
-        
-        // Get (1) rgb (2) xyz (3) imu data
-        // This function should be call around 30 fps to get all data
-        void getCurrData( cv::Mat& rgb_output, \
-                          cv::Mat& xyz_output, \
-                          cv::Mat& ir_output, \
-                          uint16_t& timestamp,\
-                          std::vector<AzureKinectCamera::imu_data>& imu_outputs )
-                    
-        std::string getModelName() const;
+        /** 
+         * Returns the width of the SR300 camera frame 
+         */
+        int getWidth() const override;
 
-        // Get RGB image intrinsic matrix
-        // ( cx, cy, fx, fy )
-        cv::Vec4d getColorIntrinsics();
+        /** 
+         * Returns the height of the SR300 camera frame 
+         */
+        int getHeight() const override;
 
-        // Get RGB image size
-        // (width, height)
-        cv::Size getImageSize() const;
+        /**
+         * Returns default detection parameters for this depth camera class
+         */
+        const DetectionParams::Ptr & getDefaultParams() const override;
 
-        int getHeight() const;
+        /**
+         * Returns true if an RGB image is available from this camera.
+         * @return true if an RGB image is available from this camera.
+         */
+        bool hasRGBMap() const override;
 
-        int getWidth() const;
+        /** Preferred frame height */
+        const int PREFERRED_FRAME_H = 480;
 
-    private:
-        void freeResource();
+        /** Shared pointer to Azure Kinect camera instance */
+        typedef std::shared_ptr<AzureKinectCamera> Ptr;
+
+        /** Get the timestamp of the last image in nanoseconds */
+        uint64_t getTimestamp() const;
+
+        /** Get the basic calibration intrinsics
+         *  @return (fx, cx, fy, cy) */
+        cv::Vec4d getCalibIntrinsics() const;
+
+    protected:
+        /**
+        * Gets the new frame from the sensor (implements functionality).
+        * Updates xyzMap and ir_map.
+        */
+        void update(cv::Mat & xyz_map, \
+                    cv::Mat & rgb_map, \
+                    cv::Mat & ir_map, \
+                    cv::Mat & amp_map, \
+                    cv::Mat & flag_map) override;
 
     private:
         k4a_device_t device;
@@ -82,7 +96,12 @@ namespace ark
         k4a_device_configuration_t camera_config;
         // cx, cy, fx, fy
         cv::Vec4d intrinsic;
+        uint16_t timestamp;
         int img_width, img_height;
-    };
+        // Timeout for capture
+        const int32_t TIMEOUT_IN_MS = 1000;
 
+        mutable bool defaultParamsSet = false;
+        mutable DetectionParams::Ptr defaultParams;
+    };
 }

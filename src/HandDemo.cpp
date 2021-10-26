@@ -81,6 +81,7 @@ int main() {
     bool showHands = true, showPlanes = false, useSVM = true, useEdgeConn = false, showArea = false, playing = true;
 
     // turn on the camera
+    // run the capture controller stream that capture RGB, Depth in 30 fps
     camera->beginCapture();
 
     // main demo loop
