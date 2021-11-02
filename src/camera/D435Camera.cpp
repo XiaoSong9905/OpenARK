@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "Version.h"
-#include "D435Camera.h"
+#include "camera/D435Camera.h"
 #include "util/Visualizer.h"
 
 #include <librealsense2/rs.hpp>
