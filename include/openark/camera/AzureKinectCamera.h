@@ -97,7 +97,9 @@ namespace ark {
         // cx, cy, fx, fy
         cv::Vec4d intrinsic;
         uint16_t timestamp;
-        int img_width, img_height;
+        int original_width, original_height;
+        //int scale_width, scale_height;
+        //double scale;
         // Timeout for capture
         const int32_t TIMEOUT_IN_MS = 1000;
 

@@ -9,7 +9,7 @@
  */
 
 #include <cstring> // memcpy
-#include <k4a/k4a.h>
+#include <k4a/k4a.h> // openark api
 #include <iostream>
 #include "openark/stdafx.h"
 #include "openark/Version.h"
@@ -18,10 +18,11 @@
 /** Azure Kinect Cross-Platform Depth Camera Backend **/
 namespace ark 
 {
-    // TODO add resource release
-    AzureKinectCamera::AzureKinectCamera() noexcept : \
-        device(NULL), capture(NULL), \
-        calibration(NULL), transformation(NULL) \
+    AzureKinectCamera::AzureKinectCamera( ) noexcept : \
+                                        device(NULL), \
+                                        capture(NULL), \
+                                        calibration(NULL), \
+                                        transformation(NULL) \
     {
         // Count number of k4a device to ensure there are connected device
         if ( k4a_device_get_installed_count() == 0 )
@@ -49,7 +50,7 @@ namespace ark
         // 1280 * 720  16:9
         camera_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
         // 1024 * 1024 wide field of view depth without binned
-        camera_config.depth_mode       = K4A_DEPTH_MODE_WFOV_UNBINNED;
+        camera_config.depth_mode = K4A_DEPTH_MODE_WFOV_UNBINNED;
         // ensures that depth and color images are both available in the capture
         // objects may be produced only a single image when the corresponding image is dropped.
         camera_config.synchronized_images_only = true; 
@@ -73,8 +74,8 @@ namespace ark
         intrinsic.at(2) = color_camera_intrin.fx;
         intrinsic.at(3) = color_camera_intrin.fy;
 
-        img_width = calibration.color_camera_calibration.resolution_width;
-        img_height = calibration.color_camera_calibration.resolution_height;
+        original_width = calibration.color_camera_calibration.resolution_width;
+        original_height = calibration.color_camera_calibration.resolution_height;
 
         // Create depth/coor transformation
         transformation = k4a_transformation_create(&calibration);
@@ -88,20 +89,18 @@ namespace ark
         }
     }
 
-    // TODO
     AzureKinectCamera::~AzureKinectCamera() 
     {
-        auto device = reinterpret_cast<k4a_device_t>(this->k4a_device);
-        if (device != nullptr) {
+        if (device != NULL)
+        {
+            k4a_device_stop_cameras(device);
+            k4a_device_stop_imu(device);
             k4a_device_close(device);
         }
-        auto transformation = reinterpret_cast<k4a_transformation_t>(this->k4a_transformation);
-        if (transformation != nullptr) {
+        
+        if (transformation != NULL)
+        {
             k4a_transformation_destroy(transformation);
-        }
-        auto xy_table = reinterpret_cast<k4a_image_t>(this->xy_table_cache);
-        if (xy_table != nullptr) {
-            k4a_image_release(xy_table);
         }
     }
 
@@ -120,7 +119,6 @@ namespace ark
 		return scaled_height;
     }
 
-    // TODO
 	const DetectionParams::Ptr & AzureKinectCamera::getDefaultParams() const 
     {
 		if (!defaultParamsSet) {
@@ -149,7 +147,6 @@ namespace ark
         return true;
 	}
 
-    // tODO question
     uint64_t AzureKinectCamera::getTimestamp() const
     {
         return timestamp;
@@ -160,14 +157,24 @@ namespace ark
         return intrinsic;
     }
 
-    // TODO add resource release
-    // TODO not sure about resource release
+    // Get the latest data frame. 
+    // This function is called by 
+    //  thread DepthCamera::captureThreadingHelper 
+    //      -> DepthCamera::nextFrame 
+    //      -> swapBuffers() change pervious buffer with current buffer
+    //
+    // Arguments:
+    //   size of ( width, height ) with 0 underlying elements
+    //   xyz_output : CV_32FC3 
+    //   rgb_output : CV_8UC3
+    //   ir_map     : CV_8U
+    //   amp_map    : CV_32F
+    //   flag_map   : CV_8U
     void AzureKinectCamera::update(cv::Mat & xyz_output, \
                                    cv::Mat & rgb_output, \
                                    cv::Mat & ir_map, \
                                    cv::Mat & amp_map, \
                                    cv::Mat & flag_map )
-    
     {
         // Runtime resource
         k4a_image_t image_sample = NULL;
@@ -215,11 +222,12 @@ namespace ark
         // Extract device (the camera) time stamp & convert to nanoseconds
         timestamp = k4a_image_get_timestamp_usec(depth_image) * 1e3;
     
-        // Copy result to output
+        // Copy RGB result to output
         // Create a cv:::Mat using the k4a_image_t image buffer, there is no memory copy in this step
+        // underlying data of image_sample is of format RGB Packed with no padding 
         // https://stackoverflow.com/questions/57222190/how-to-convert-k4a-image-t-to-opencv-matrix-azure-kinect-sensor-sdk
-        cv::Mat rgba_output(img_height, \
-                            img_width, \
+        cv::Mat rgba_output(original_height, \
+                            original_width, \
                             CV_8UC4, \
                             reinterpret_cast<void*>k4a_image_get_buffer(image_sample), \
                             cv::Mat::AUTO_STEP);
@@ -231,37 +239,27 @@ namespace ark
 
         // Align depth to color image
         if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_DEPTH16,
-                                                    img_width,
-                                                    img_height,
-                                                    img_width * (int)sizeof(uint16_t), 
+                                                    original_width,
+                                                    original_height,
+                                                    original_width * (int)sizeof(uint16_t), 
                                                     &depth_sample_transformed_img_coord))
         {
             std::cerr << "Failed to create transformed depth image" << std::endl;
             goto ReleaseRunTimeResource;
         }
 
-        // TODO change this
-        if ( K4A_RESULT_SUCCEEDED != \
-             k4a_image_create_from_buffer( K4A_IMAGE_FORMAT_CUSTOM,
-                                           img_width,
-                                           img_height,
-                                           img_width * 3 * (int)sizeof(int16_t),
-                                           reinterpret_cast<uint8_t*> xyz_output.data,
-                                           img_width * img_width * 3 * (int)sizeof(int16_t),
-                                           nullptr,
-                                           nullptr,
-                                           point_cloud_transformed_image_coordinate ))
+        // Transform depth (under RGB coordinate) to point cloud
+        // format : 3 * int16_t
+        if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_CUSTOM,
+                                                    original_width,
+                                                    original_height,
+                                                    original_width * 3 * (int)sizeof(int16_t),
+                                                    &depth_sample_transformed_point_cloud))
         {
-            printf("Failed to create point cloud buffer from cv::Mat memory\n");
-            goto ReleaseRunTimeResource;
+            printf("Failed to create point cloud image\n");
+            return false;
         }
 
-        // Create XYZ map from transformed depth
-        // K4A_CALIBRATION_TYPE_COLOR is used because depth is reproject to camera coordinate first
-        // Each pixel of the xyz_image (point_cloud_transformed_image_coordinate) consists of three int16_t values
-        //
-        // Azure-Kinect-Sensor-SDK/examples/transformation/main.cpp
-        // https://microsoft.github.io/Azure-Kinect-Sensor-SDK/master/group___functions_ga7385eb4beb9d8892e8a88cf4feb3be70.html
         if (K4A_RESULT_SUCCEEDED != \
             k4a_transformation_depth_image_to_point_cloud(transformation,
                                                           depth_sample_transformed_img_coord,
@@ -272,13 +270,24 @@ namespace ark
             goto ReleaseRunTimeResource;
         }
 
-        // TODO add convert point cloud to cv mat
+        // Convert point cloud from int16_t to float32_t 
+        cv::Mat xyz_output_int16(original_height, \
+                                 original_width, \
+                                 CV_16SC3, \
+                                 reinterpret_cast<void*>k4a_image_get_buffer(depth_sample_transformed_point_cloud), \
+                                 cv::Mat::AUTO_STEP);
+        
+        xyz_output_int16.convertTo( xyz_output, CV32FC3 );
 
     ReleaseRunTimeResource:
-        if ( image_sample ) k4a_image_release( image_sample );
-        if ( depth_sample ) k4a_image_release( depth_sample );
-        if ( depth_sample_transformed_img_coord ) k4a_image_release( depth_sample_transformed_img_coord );
-        if ( depth_sample_transformed_point_cloud ) k4a_image_release( depth_sample_transformed_point_cloud );
+        if ( image_sample ) 
+            k4a_image_release( image_sample );
+        if ( depth_sample ) 
+            k4a_image_release( depth_sample );
+        if ( depth_sample_transformed_img_coord ) 
+            k4a_image_release( depth_sample_transformed_img_coord );
+        if ( depth_sample_transformed_point_cloud ) 
+            k4a_image_release( depth_sample_transformed_point_cloud );
         k4a_capture_release(capture);
     }
 }

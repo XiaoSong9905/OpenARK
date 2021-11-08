@@ -353,12 +353,12 @@ namespace ark
         // User may reuse the rgb_output variable to avoid allocate new memory every time
         cv::cvtColor(rgba_output, rgb_output, cv::COLOR_RGBA2RGB);
 
-        // Copy IR to output
+        // Copy depth to output
         //
         // Reference: Azure-Kinect-Samples/pipe-to-python-samples/main.cpp
         std::memcpy( reinterpret_cast<uint8_t*> xyz_output.data,
-                     reinterpret_cast<uint8_t*> k4a_image_get_buffer( ir_sample ), 
-                     k4a_image_get_size( ir_sample ) );
+                     reinterpret_cast<uint8_t*> k4a_image_get_buffer( point_cloud_transformed_image_coordinate ), 
+                     k4a_image_get_size( point_cloud_transformed_image_coordinate ) );
 
         // Free resources
     ReleaseRunTimeResource:
